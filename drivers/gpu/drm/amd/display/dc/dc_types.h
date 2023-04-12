@@ -32,7 +32,9 @@
 #include "os_types.h"
 #include "fixed31_32.h"
 #include "irq_types.h"
+#include "dc_ddc_types.h"
 #include "dc_dp_types.h"
+#include "dc_hdmi_types.h"
 #include "dc_hw_types.h"
 #include "dal_types.h"
 #include "grph_object_defs.h"
@@ -75,18 +77,6 @@ enum dce_environment {
 #define IS_DIAG_DC(dce_environment) \
 	(IS_FPGA_MAXIMUS_DC(dce_environment) || (dce_environment == DCE_ENV_DIAG))
 
-struct hw_asic_id {
-	uint32_t chip_id;
-	uint32_t chip_family;
-	uint32_t pci_revision_id;
-	uint32_t hw_internal_rev;
-	uint32_t vram_type;
-	uint32_t vram_width;
-	uint32_t feature_flags;
-	uint32_t fake_paths_num;
-	void *atombios_base_address;
-};
-
 struct dc_perf_trace {
 	unsigned long read_count;
 	unsigned long write_count;
@@ -94,42 +84,8 @@ struct dc_perf_trace {
 	unsigned long last_entry_write;
 };
 
-struct dc_context {
-	struct dc *dc;
-
-	void *driver_context; /* e.g. amdgpu_device */
-	struct dc_perf_trace *perf_trace;
-	void *cgs_device;
-
-	enum dce_environment dce_environment;
-	struct hw_asic_id asic_id;
-
-	/* todo: below should probably move to dc.  to facilitate removal
-	 * of AS we will store these here
-	 */
-	enum dce_version dce_version;
-	struct dc_bios *dc_bios;
-	bool created_bios;
-	struct gpio_service *gpio_service;
-	uint32_t dc_sink_id_count;
-	uint32_t dc_stream_id_count;
-	uint32_t dc_edp_id_count;
-	uint64_t fbc_gpu_addr;
-	struct dc_dmub_srv *dmub_srv;
-
-#ifdef CONFIG_DRM_AMD_DC_HDCP
-	struct cp_psp cp_psp;
-#endif
-};
-
-
-#define DC_MAX_EDID_BUFFER_SIZE 1280
-#define DC_EDID_BLOCK_SIZE 128
 #define MAX_SURFACE_NUM 4
 #define NUM_PIXEL_FORMATS 10
-#define MAX_REPEATER_CNT 8
-
-#include "dc_ddc_types.h"
 
 enum tiling_mode {
 	TILING_MODE_INVALID,
@@ -179,6 +135,7 @@ enum dc_edid_status {
 	EDID_BAD_CHECKSUM,
 	EDID_THE_SAME,
 	EDID_FALL_BACK,
+	EDID_PARTIAL_VALID,
 };
 
 enum act_return_status {
@@ -236,7 +193,10 @@ struct dc_panel_patch {
 	unsigned int disable_fec;
 	unsigned int extra_t3_ms;
 	unsigned int max_dsc_target_bpp_limit;
+	unsigned int embedded_tiled_slave;
+	unsigned int disable_fams;
 	unsigned int skip_avmute;
+	unsigned int mst_start_top_delay;
 };
 
 struct dc_edid_caps {
@@ -317,6 +277,8 @@ enum dc_timing_source {
 	TIMING_SOURCE_EDID_CEA_SVD,
 	TIMING_SOURCE_EDID_CVT_3BYTE,
 	TIMING_SOURCE_EDID_4BYTE,
+	TIMING_SOURCE_EDID_CEA_DISPLAYID_VTDB,
+	TIMING_SOURCE_EDID_CEA_RID,
 	TIMING_SOURCE_VBIOS,
 	TIMING_SOURCE_CV,
 	TIMING_SOURCE_TV,
@@ -409,50 +371,6 @@ struct dc_csc_adjustments {
 	struct fixed31_32 hue;
 };
 
-enum dpcd_downstream_port_max_bpc {
-	DOWN_STREAM_MAX_8BPC = 0,
-	DOWN_STREAM_MAX_10BPC,
-	DOWN_STREAM_MAX_12BPC,
-	DOWN_STREAM_MAX_16BPC
-};
-
-
-enum link_training_offset {
-	DPRX                = 0,
-	LTTPR_PHY_REPEATER1 = 1,
-	LTTPR_PHY_REPEATER2 = 2,
-	LTTPR_PHY_REPEATER3 = 3,
-	LTTPR_PHY_REPEATER4 = 4,
-	LTTPR_PHY_REPEATER5 = 5,
-	LTTPR_PHY_REPEATER6 = 6,
-	LTTPR_PHY_REPEATER7 = 7,
-	LTTPR_PHY_REPEATER8 = 8
-};
-
-struct dc_lttpr_caps {
-	union dpcd_rev revision;
-	uint8_t mode;
-	uint8_t max_lane_count;
-	uint8_t max_link_rate;
-	uint8_t phy_repeater_cnt;
-	uint8_t max_ext_timeout;
-	uint8_t aux_rd_interval[MAX_REPEATER_CNT - 1];
-};
-
-struct dc_dongle_caps {
-	/* dongle type (DP converter, CV smart dongle) */
-	enum display_dongle_type dongle_type;
-	bool extendedCapValid;
-	/* If dongle_type == DISPLAY_DONGLE_DP_HDMI_CONVERTER,
-	indicates 'Frame Sequential-to-lllFrame Pack' conversion capability.*/
-	bool is_dp_hdmi_s3d_converter;
-	bool is_dp_hdmi_ycbcr422_pass_through;
-	bool is_dp_hdmi_ycbcr420_pass_through;
-	bool is_dp_hdmi_ycbcr422_converter;
-	bool is_dp_hdmi_ycbcr420_converter;
-	uint32_t dp_hdmi_max_bpc;
-	uint32_t dp_hdmi_max_pixel_clk_in_khz;
-};
 /* Scaling format */
 enum scaling_transformation {
 	SCALING_TRANSFORMATION_UNINITIALIZED,
@@ -673,6 +591,7 @@ enum dc_psr_state {
 	PSR_STATE1a,
 	PSR_STATE2,
 	PSR_STATE2a,
+	PSR_STATE2b,
 	PSR_STATE3,
 	PSR_STATE3Init,
 	PSR_STATE4,
@@ -680,10 +599,17 @@ enum dc_psr_state {
 	PSR_STATE4b,
 	PSR_STATE4c,
 	PSR_STATE4d,
+	PSR_STATE4_FULL_FRAME,
+	PSR_STATE4a_FULL_FRAME,
+	PSR_STATE4b_FULL_FRAME,
+	PSR_STATE4c_FULL_FRAME,
+	PSR_STATE4_FULL_FRAME_POWERUP,
 	PSR_STATE5,
 	PSR_STATE5a,
 	PSR_STATE5b,
 	PSR_STATE5c,
+	PSR_STATE_HWLOCK_MGR,
+	PSR_STATE_POLLVUPDATE,
 	PSR_STATE_INVALID = 0xFF
 };
 
@@ -695,6 +621,13 @@ struct psr_config {
 	unsigned int psr_sdp_transmit_line_num_deadline;
 	bool allow_smu_optimizations;
 	bool allow_multi_disp_optimizations;
+	/* Panel self refresh 2 selective update granularity required */
+	bool su_granularity_required;
+	/* psr2 selective update y granularity capability */
+	uint8_t su_y_granularity;
+	unsigned int line_time_in_us;
+	uint8_t rate_control_caps;
+	uint16_t dsc_slice_height;
 };
 
 union dmcu_psr_level {
@@ -709,7 +642,9 @@ union dmcu_psr_level {
 		unsigned int SKIP_AUTO_STATE_ADVANCE:1;
 		unsigned int DISABLE_PSR_ENTRY_ABORT:1;
 		unsigned int SKIP_SINGLE_OTG_DISABLE:1;
-		unsigned int RESERVED:22;
+		unsigned int DISABLE_ALPM:1;
+		unsigned int ALPM_DEFAULT_PD_MODE:1;
+		unsigned int RESERVED:20;
 	} bits;
 	unsigned int u32all;
 };
@@ -798,6 +733,13 @@ struct psr_context {
 	unsigned int frame_delay;
 	bool allow_smu_optimizations;
 	bool allow_multi_disp_optimizations;
+	/* Panel self refresh 2 selective update granularity required */
+	bool su_granularity_required;
+	/* psr2 selective update y granularity capability */
+	uint8_t su_y_granularity;
+	unsigned int line_time_in_us;
+	uint8_t rate_control_caps;
+	uint16_t dsc_slice_height;
 };
 
 struct colorspace_transform {
@@ -834,6 +776,47 @@ struct dc_clock_config {
 	uint32_t min_clock_khz;
 	uint32_t bw_requirequired_clock_khz;
 	uint32_t current_clock_khz;/*current clock in use*/
+};
+
+struct hw_asic_id {
+	uint32_t chip_id;
+	uint32_t chip_family;
+	uint32_t pci_revision_id;
+	uint32_t hw_internal_rev;
+	uint32_t vram_type;
+	uint32_t vram_width;
+	uint32_t feature_flags;
+	uint32_t fake_paths_num;
+	void *atombios_base_address;
+};
+
+struct dc_context {
+	struct dc *dc;
+
+	void *driver_context; /* e.g. amdgpu_device */
+	struct dc_perf_trace *perf_trace;
+	void *cgs_device;
+
+	enum dce_environment dce_environment;
+	struct hw_asic_id asic_id;
+
+	/* todo: below should probably move to dc.  to facilitate removal
+	 * of AS we will store these here
+	 */
+	enum dce_version dce_version;
+	struct dc_bios *dc_bios;
+	bool created_bios;
+	struct gpio_service *gpio_service;
+	uint32_t dc_sink_id_count;
+	uint32_t dc_stream_id_count;
+	uint32_t dc_edp_id_count;
+	uint64_t fbc_gpu_addr;
+	struct dc_dmub_srv *dmub_srv;
+#ifdef CONFIG_DRM_AMD_DC_HDCP
+	struct cp_psp cp_psp;
+#endif
+	uint32_t *dcn_reg_offsets;
+	uint32_t *nbio_reg_offsets;
 };
 
 /* DSC DPCD capabilities */
@@ -929,12 +912,14 @@ enum dc_gpu_mem_alloc_type {
 
 enum dc_psr_version {
 	DC_PSR_VERSION_1			= 0,
+	DC_PSR_VERSION_SU_1			= 1,
 	DC_PSR_VERSION_UNSUPPORTED		= 0xFFFFFFFF,
 };
 
 /* Possible values of display_endpoint_id.endpoint */
 enum display_endpoint_type {
 	DISPLAY_ENDPOINT_PHY = 0, /* Physical connector. */
+	DISPLAY_ENDPOINT_USB4_DPIA, /* USB4 DisplayPort tunnel. */
 	DISPLAY_ENDPOINT_UNKNOWN = -1
 };
 
@@ -947,4 +932,54 @@ struct display_endpoint_id {
 	enum display_endpoint_type ep_type;
 };
 
+#if defined(CONFIG_DRM_AMD_SECURE_DISPLAY)
+struct otg_phy_mux {
+	uint8_t phy_output_num;
+	uint8_t otg_output_num;
+};
+#endif
+
+enum dc_detect_reason {
+	DETECT_REASON_BOOT,
+	DETECT_REASON_RESUMEFROMS3S4,
+	DETECT_REASON_HPD,
+	DETECT_REASON_HPDRX,
+	DETECT_REASON_FALLBACK,
+	DETECT_REASON_RETRAIN,
+	DETECT_REASON_TDR,
+};
+
+struct dc_link_status {
+	bool link_active;
+	struct dpcd_caps *dpcd_caps;
+};
+
+#if defined(CONFIG_DRM_AMD_DC_HDCP)
+union hdcp_rx_caps {
+	struct {
+		uint8_t version;
+		uint8_t reserved;
+		struct {
+			uint8_t repeater	: 1;
+			uint8_t hdcp_capable	: 1;
+			uint8_t reserved	: 6;
+		} byte0;
+	} fields;
+	uint8_t raw[3];
+};
+
+union hdcp_bcaps {
+	struct {
+		uint8_t HDCP_CAPABLE:1;
+		uint8_t REPEATER:1;
+		uint8_t RESERVED:6;
+	} bits;
+	uint8_t raw;
+};
+
+struct hdcp_caps {
+	union hdcp_rx_caps rx_caps;
+	union hdcp_bcaps bcaps;
+};
+#endif
 #endif /* DC_TYPES_H_ */

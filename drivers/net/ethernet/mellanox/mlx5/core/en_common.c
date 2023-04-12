@@ -31,37 +31,11 @@
  */
 
 #include "en.h"
+#include "lib/crypto.h"
 
 /* mlx5e global resources should be placed in this file.
- * Global resources are common to all the netdevices crated on the same nic.
+ * Global resources are common to all the netdevices created on the same nic.
  */
-
-int mlx5e_create_tir(struct mlx5_core_dev *mdev, struct mlx5e_tir *tir, u32 *in)
-{
-	struct mlx5e_hw_objs *res = &mdev->mlx5e_res.hw_objs;
-	int err;
-
-	err = mlx5_core_create_tir(mdev, in, &tir->tirn);
-	if (err)
-		return err;
-
-	mutex_lock(&res->td.list_lock);
-	list_add(&tir->list, &res->td.tirs_list);
-	mutex_unlock(&res->td.list_lock);
-
-	return 0;
-}
-
-void mlx5e_destroy_tir(struct mlx5_core_dev *mdev,
-		       struct mlx5e_tir *tir)
-{
-	struct mlx5e_hw_objs *res = &mdev->mlx5e_res.hw_objs;
-
-	mutex_lock(&res->td.list_lock);
-	mlx5_core_destroy_tir(mdev, tir->tirn);
-	list_del(&tir->list);
-	mutex_unlock(&res->td.list_lock);
-}
 
 void mlx5e_mkey_set_relaxed_ordering(struct mlx5_core_dev *mdev, void *mkc)
 {
@@ -73,8 +47,7 @@ void mlx5e_mkey_set_relaxed_ordering(struct mlx5_core_dev *mdev, void *mkc)
 	MLX5_SET(mkc, mkc, relaxed_ordering_write, ro_pci_enable && ro_write);
 }
 
-static int mlx5e_create_mkey(struct mlx5_core_dev *mdev, u32 pdn,
-			     struct mlx5_core_mkey *mkey)
+int mlx5e_create_mkey(struct mlx5_core_dev *mdev, u32 pdn, u32 *mkey)
 {
 	int inlen = MLX5_ST_SZ_BYTES(create_mkey_in);
 	void *mkc;
@@ -132,10 +105,17 @@ int mlx5e_create_mdev_resources(struct mlx5_core_dev *mdev)
 	INIT_LIST_HEAD(&res->td.tirs_list);
 	mutex_init(&res->td.list_lock);
 
+	mdev->mlx5e_res.dek_priv = mlx5_crypto_dek_init(mdev);
+	if (IS_ERR(mdev->mlx5e_res.dek_priv)) {
+		mlx5_core_err(mdev, "crypto dek init failed, %ld\n",
+			      PTR_ERR(mdev->mlx5e_res.dek_priv));
+		mdev->mlx5e_res.dek_priv = NULL;
+	}
+
 	return 0;
 
 err_destroy_mkey:
-	mlx5_core_destroy_mkey(mdev, &res->mkey);
+	mlx5_core_destroy_mkey(mdev, res->mkey);
 err_dealloc_transport_domain:
 	mlx5_core_dealloc_transport_domain(mdev, res->td.tdn);
 err_dealloc_pd:
@@ -147,8 +127,10 @@ void mlx5e_destroy_mdev_resources(struct mlx5_core_dev *mdev)
 {
 	struct mlx5e_hw_objs *res = &mdev->mlx5e_res.hw_objs;
 
+	mlx5_crypto_dek_cleanup(mdev->mlx5e_res.dek_priv);
+	mdev->mlx5e_res.dek_priv = NULL;
 	mlx5_free_bfreg(mdev, &res->bfreg);
-	mlx5_core_destroy_mkey(mdev, &res->mkey);
+	mlx5_core_destroy_mkey(mdev, res->mkey);
 	mlx5_core_dealloc_transport_domain(mdev, res->td.tdn);
 	mlx5_core_dealloc_pd(mdev, res->pdn);
 	memset(res, 0, sizeof(*res));

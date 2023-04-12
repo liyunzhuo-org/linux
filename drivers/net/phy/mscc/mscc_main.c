@@ -136,7 +136,7 @@ static void vsc85xx_get_strings(struct phy_device *phydev, u8 *data)
 		return;
 
 	for (i = 0; i < priv->nstats; i++)
-		strlcpy(data + i * ETH_GSTRING_LEN, priv->hw_stats[i].string,
+		strscpy(data + i * ETH_GSTRING_LEN, priv->hw_stats[i].string,
 			ETH_GSTRING_LEN);
 }
 
@@ -273,19 +273,16 @@ static int vsc85xx_downshift_set(struct phy_device *phydev, u8 count)
 static int vsc85xx_wol_set(struct phy_device *phydev,
 			   struct ethtool_wolinfo *wol)
 {
+	const u8 *mac_addr = phydev->attached_dev->dev_addr;
 	int rc;
 	u16 reg_val;
 	u8  i;
 	u16 pwd[3] = {0, 0, 0};
 	struct ethtool_wolinfo *wol_conf = wol;
-	u8 *mac_addr = phydev->attached_dev->dev_addr;
 
-	mutex_lock(&phydev->lock);
 	rc = phy_select_page(phydev, MSCC_PHY_PAGE_EXTENDED_2);
-	if (rc < 0) {
-		rc = phy_restore_page(phydev, rc, rc);
-		goto out_unlock;
-	}
+	if (rc < 0)
+		return phy_restore_page(phydev, rc, rc);
 
 	if (wol->wolopts & WAKE_MAGIC) {
 		/* Store the device address for the magic packet */
@@ -323,7 +320,7 @@ static int vsc85xx_wol_set(struct phy_device *phydev,
 
 	rc = phy_restore_page(phydev, rc, rc > 0 ? 0 : rc);
 	if (rc < 0)
-		goto out_unlock;
+		return rc;
 
 	if (wol->wolopts & WAKE_MAGIC) {
 		/* Enable the WOL interrupt */
@@ -331,22 +328,19 @@ static int vsc85xx_wol_set(struct phy_device *phydev,
 		reg_val |= MII_VSC85XX_INT_MASK_WOL;
 		rc = phy_write(phydev, MII_VSC85XX_INT_MASK, reg_val);
 		if (rc)
-			goto out_unlock;
+			return rc;
 	} else {
 		/* Disable the WOL interrupt */
 		reg_val = phy_read(phydev, MII_VSC85XX_INT_MASK);
 		reg_val &= (~MII_VSC85XX_INT_MASK_WOL);
 		rc = phy_write(phydev, MII_VSC85XX_INT_MASK, reg_val);
 		if (rc)
-			goto out_unlock;
+			return rc;
 	}
 	/* Clear WOL iterrupt status */
 	reg_val = phy_read(phydev, MII_VSC85XX_INT_STATUS);
 
-out_unlock:
-	mutex_unlock(&phydev->lock);
-
-	return rc;
+	return 0;
 }
 
 static void vsc85xx_wol_get(struct phy_device *phydev,
@@ -358,10 +352,9 @@ static void vsc85xx_wol_get(struct phy_device *phydev,
 	u16 pwd[3] = {0, 0, 0};
 	struct ethtool_wolinfo *wol_conf = wol;
 
-	mutex_lock(&phydev->lock);
 	rc = phy_select_page(phydev, MSCC_PHY_PAGE_EXTENDED_2);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_restore_page;
 
 	reg_val = __phy_read(phydev, MSCC_PHY_WOL_MAC_CONTROL);
 	if (reg_val & SECURE_ON_ENABLE)
@@ -377,9 +370,8 @@ static void vsc85xx_wol_get(struct phy_device *phydev,
 		}
 	}
 
-out_unlock:
+out_restore_page:
 	phy_restore_page(phydev, rc, rc > 0 ? 0 : rc);
-	mutex_unlock(&phydev->lock);
 }
 
 #if IS_ENABLED(CONFIG_OF_MDIO)
@@ -2685,3 +2677,6 @@ MODULE_DEVICE_TABLE(mdio, vsc85xx_tbl);
 MODULE_DESCRIPTION("Microsemi VSC85xx PHY driver");
 MODULE_AUTHOR("Nagaraju Lakkaraju");
 MODULE_LICENSE("Dual MIT/GPL");
+
+MODULE_FIRMWARE(MSCC_VSC8584_REVB_INT8051_FW);
+MODULE_FIRMWARE(MSCC_VSC8574_REVB_INT8051_FW);

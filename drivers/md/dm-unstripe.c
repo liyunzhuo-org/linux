@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2017 Intel Corporation.
  *
@@ -155,6 +156,10 @@ static void unstripe_status(struct dm_target *ti, status_type_t type,
 		DMEMIT("%d %llu %d %s %llu",
 		       uc->stripes, (unsigned long long)uc->chunk_size, uc->unstripe,
 		       uc->dev->name, (unsigned long long)uc->physical_start);
+		break;
+
+	case STATUSTYPE_IMA:
+		*result = '\0';
 		break;
 	}
 }

@@ -206,7 +206,7 @@ static inline bool vf610_nfc_kernel_is_little_endian(void)
 #endif
 }
 
-/**
+/*
  * Read accessor for internal SRAM buffer
  * @dst: destination address in regular memory
  * @src: source address in SRAM buffer
@@ -241,7 +241,7 @@ static inline void vf610_nfc_rd_from_sram(void *dst, const void __iomem *src,
 	}
 }
 
-/**
+/*
  * Write accessor for internal SRAM buffer
  * @dst: destination address in SRAM buffer
  * @src: source address in regular memory
@@ -807,7 +807,6 @@ static const struct nand_controller_ops vf610_nfc_controller_ops = {
 static int vf610_nfc_probe(struct platform_device *pdev)
 {
 	struct vf610_nfc *nfc;
-	struct resource *res;
 	struct mtd_info *mtd;
 	struct nand_chip *chip;
 	struct device_node *child;
@@ -831,8 +830,7 @@ static int vf610_nfc_probe(struct platform_device *pdev)
 	if (irq <= 0)
 		return -EINVAL;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	nfc->regs = devm_ioremap_resource(nfc->dev, res);
+	nfc->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(nfc->regs))
 		return PTR_ERR(nfc->regs);
 

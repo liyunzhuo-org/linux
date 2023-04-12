@@ -57,10 +57,10 @@ static int memstick_bus_match(struct device *dev, struct device_driver *drv)
 	return 0;
 }
 
-static int memstick_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int memstick_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
-	struct memstick_dev *card = container_of(dev, struct memstick_dev,
-						  dev);
+	const struct memstick_dev *card = container_of_const(dev, struct memstick_dev,
+							     dev);
 
 	if (add_uevent_var(env, "MEMSTICK_TYPE=%02X", card->id.type))
 		return -ENOMEM;
@@ -91,7 +91,7 @@ static int memstick_device_probe(struct device *dev)
 	return rc;
 }
 
-static int memstick_device_remove(struct device *dev)
+static void memstick_device_remove(struct device *dev)
 {
 	struct memstick_dev *card = container_of(dev, struct memstick_dev,
 						  dev);
@@ -105,7 +105,6 @@ static int memstick_device_remove(struct device *dev)
 	}
 
 	put_device(dev);
-	return 0;
 }
 
 #ifdef CONFIG_PM

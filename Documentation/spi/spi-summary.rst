@@ -105,7 +105,7 @@ find isn't necessarily helpful.  The four modes combine two mode bits:
  - CPHA indicates the clock phase used to sample data; CPHA=0 says
    sample on the leading edge, CPHA=1 means the trailing edge.
 
-   Since the signal needs to stablize before it's sampled, CPHA=0
+   Since the signal needs to stabilize before it's sampled, CPHA=0
    implies that its data is written half a clock before the first
    clock edge.  The chipselect may have made it become available.
 
@@ -335,14 +335,6 @@ certainly includes SPI devices hooked up through the card connectors!
 
 Non-static Configurations
 ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Developer boards often play by different rules than product boards, and one
-example is the potential need to hotplug SPI devices and/or controllers.
-
-For those cases you might need to use spi_busnum_to_master() to look
-up the spi bus master, and will likely need spi_new_device() to provide the
-board info based on the board that was hotplugged.  Of course, you'd later
-call at least spi_unregister_device() when that board is removed.
 
 When Linux includes support for MMC/SD/SDIO/DataFlash cards through SPI, those
 configurations will also be dynamic.  Fortunately, such devices all support

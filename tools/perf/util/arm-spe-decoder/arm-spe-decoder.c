@@ -68,7 +68,11 @@ static u64 arm_spe_calc_ip(int index, u64 payload)
 		/* Clean highest byte */
 		payload = SPE_ADDR_PKT_ADDR_GET_BYTES_0_6(payload);
 	} else {
-		pr_err("unsupported address packet index: 0x%x\n", index);
+		static u32 seen_idx = 0;
+		if (!(seen_idx & BIT(index))) {
+			seen_idx |= BIT(index);
+			pr_warning("ignoring unsupported address packet index: 0x%x\n", index);
+		}
 	}
 
 	return payload;
@@ -151,6 +155,7 @@ static int arm_spe_read_record(struct arm_spe_decoder *decoder)
 	u64 payload, ip;
 
 	memset(&decoder->record, 0x0, sizeof(decoder->record));
+	decoder->record.context_id = (u64)-1;
 
 	while (1) {
 		err = arm_spe_get_next_packet(decoder);
@@ -178,8 +183,11 @@ static int arm_spe_read_record(struct arm_spe_decoder *decoder)
 				decoder->record.phys_addr = ip;
 			break;
 		case ARM_SPE_COUNTER:
+			if (idx == SPE_CNT_PKT_HDR_INDEX_TOTAL_LAT)
+				decoder->record.latency = payload;
 			break;
 		case ARM_SPE_CONTEXT:
+			decoder->record.context_id = payload;
 			break;
 		case ARM_SPE_OP_TYPE:
 			if (idx == SPE_OP_PKT_HDR_CLASS_LD_ST_ATOMIC) {
@@ -216,6 +224,7 @@ static int arm_spe_read_record(struct arm_spe_decoder *decoder)
 
 			break;
 		case ARM_SPE_DATA_SOURCE:
+			decoder->record.source = payload;
 			break;
 		case ARM_SPE_BAD:
 			break;
